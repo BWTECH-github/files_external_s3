@@ -17,41 +17,97 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  APP_NAME: files_external_s3
-  PHP_VERSIONS: '["8.3"]'
-
 jobs:
-  get-vars:
+  lint-and-style:
+    name: Lint & code style (PHP 8.4)
     runs-on: ubuntu-latest
-    outputs:
-      app-name: ${{ env.APP_NAME }}
-      php-versions: ${{ env.PHP_VERSIONS }}
     steps:
-      - name: Set variables
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: PHP lint
         run: |
-          echo "App name $APP_NAME"
-          echo "PHP versions string: $PHP_VERSIONS"
+          find appinfo lib templates tests -name '*.php' -print0 2>/dev/null \
+            | xargs -0 -r -n1 -P4 php -l
 
-  semantic-git-messages:
-    name: Commits
-    uses: owncloud/reusable-workflows/.github/workflows/semantic-git-message.yml@main
+      - name: Install ownCloud code style
+        run: composer bin owncloud-codestyle install --no-interaction --no-progress
 
-  php-code-style:
-    name: PHP Code Style
-    needs:
-      - get-vars
-    uses: owncloud/reusable-workflows/.github/workflows/php-codestyle.yml@main
-    with:
-      app-name: ${{ needs.get-vars.outputs.app-name }}
-      php-versions: ${{ needs.get-vars.outputs.php-versions }}
+      - name: php-cs-fixer (dry run)
+        run: vendor-bin/owncloud-codestyle/vendor/bin/php-cs-fixer fix --dry-run --diff
 
-  php-unit:
-    name: PHP Unit
-    needs:
-      - get-vars
-    uses: ./.github/workflows/php-unit.yml
-    with:
-      app-name: ${{ needs.get-vars.outputs.app-name }}
-      php-versions: ${{ needs.get-vars.outputs.php-versions }}
-      use-scality-s3: true
+  integration:
+    name: Enable against owncloud.online core
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout owncloud.online core
+        uses: actions/checkout@v4
+        with:
+          repository: BWTECH-github/owncloud.online
+          ref: main
+          path: server
+
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+        with:
+          path: server/apps/files_external_s3
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: ctype, curl, dom, fileinfo, gd, iconv, intl, json, libxml, mbstring, openssl, pdo, pdo_sqlite, posix, simplexml, xml, zip
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-integration-${{ hashFiles('server/apps/files_external_s3/composer.lock') }}
+          restore-keys: composer-integration-
+
+      - name: Install core dependencies
+        working-directory: server
+        run: composer install --no-dev --no-interaction --no-progress
+
+      - name: Install plugin dependencies
+        working-directory: server/apps/files_external_s3
+        run: composer install --no-dev --no-interaction --no-progress
+
+      - name: Install ownCloud (sqlite)
+        working-directory: server
+        run: php occ maintenance:install --database sqlite --admin-user admin --admin-pass admin
+
+      - name: Enable files_external and the plugin
+        working-directory: server
+        run: |
+          php occ app:enable files_external
+          php occ app:enable files_external_s3
+          php occ app:list | grep -q "files_external_s3" \
+            && echo "files_external_s3 is enabled" \
+            || { echo "plugin not enabled"; exit 1; }
+
+      - name: Verify S3 external-storage backend is registered
+        working-directory: server
+        run: |
+          php occ files_external:backends | grep -iE "files_external_s3|Amazon S3" \
+            && echo "S3 backend registered" \
+            || { echo "backend not registered"; php occ files_external:backends; exit 1; }

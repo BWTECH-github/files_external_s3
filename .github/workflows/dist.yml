@@ -2,7 +2,8 @@ name: Build dist
 
 on:
   push:
-    branches: [ master ]
+    branches:
+      - master
   pull_request:
     types:
       - opened
@@ -14,4 +15,35 @@ permissions:
 
 jobs:
   build:
-    uses: owncloud/reusable-workflows/.github/workflows/build.yml@main
+    name: Build appstore tarball (PHP 8.4)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.4
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-dist-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-dist-
+
+      - name: Install production dependencies
+        run: composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+
+      - name: Build tarball (make dist, signing auto-skipped without key)
+        run: make dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: files_external_s3
+          path: build/dist/files_external_s3.tar.gz
+          if-no-files-found: error
