@@ -6,7 +6,12 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
--
+### Changed
+
+- PHP 8.4 is now the minimum requirement (`composer.json`, `appinfo/info.xml`).
+- Code modernised for PHP 8.4: typed properties, `#[\Override]` on inherited methods, arrow functions — no public API changes.
+- Rebranded for owncloud.online (BW-Tech GmbH fork).
+- Self-contained GitHub Actions CI (lint + code style + integration against owncloud.online); Drone pipeline removed.
 
 ## [2.1.0] - 2022-12-01
 

@@ -1,94 +1,117 @@
-# ownCloud S3 External Storage
+# S3 External Storage for owncloud.online (`files_external_s3`)
 
-<!-- OSPO-managed README | Generated: 2026-04-16 | v2 -->
+[![License](https://img.shields.io/badge/License-GPL--2.0-blue.svg)](LICENSE)
+[![PHP](https://img.shields.io/badge/PHP-8.4-777bb4.svg)](https://www.php.net/)
 
-[![License](https://img.shields.io/badge/License-GPL--2.0-blue.svg)](LICENSE) [![ownCloud OSPO](https://img.shields.io/badge/OSPO-ownCloud-blue)](https://kiteworks.com/opensource) [![Docker Hub](https://img.shields.io/docker/pulls/owncloud)](https://hub.docker.com/r/owncloud/server)
+S3-compatible object storage as an **external storage** backend for
+owncloud.online. Administrators (and users, if permitted) mount an Amazon S3 or
+S3-compatible bucket (MinIO, Ceph RGW, Scality, Wasabi, BackBlaze B2, …) as a
+folder in the ownCloud files interface. Files stay on the object store and are
+served through ownCloud with the usual sharing, sync and access controls.
 
-An ownCloud Classic (OC10) app that provides an S3-compatible object storage backend for the external storage framework. It allows administrators to mount Amazon S3 or S3-compatible storage services (such as MinIO or Ceph) as external storage volumes accessible through the ownCloud files interface.
+Unlike **primary** object storage (`files_primary_s3`, configured server-wide in
+`config.php`), this app plugs into the **files_external** framework and is
+configured **per mount through the UI or `occ`** — no `config.php` change needed.
 
-## Getting Started
+> Originally developed by ownCloud GmbH. Modified for owncloud.online and PHP 8.4
+> by BW-Tech GmbH.
 
-Enable the app and configure S3 mounts via the ownCloud external storage settings:
+## Features
+
+- Mount S3 / S3-compatible buckets as external storage (SDK v3).
+- Path-style and virtual-hosted-style endpoints (`use_path_style`).
+- Custom endpoint host/port and region — works with any S3-compatible service.
+- Optional SSL, per-user or system-wide mounts, all files_external auth/scope
+  controls.
+- Full file operations: browse, read, write, copy, move, delete, mkdir.
+
+## Requirements
+
+- owncloud.online / ownCloud **11.x**
+- **PHP 8.4**
+- The core **`files_external`** app enabled (`occ app:enable files_external`)
+- Network access from the server to the S3 endpoint
+
+## Installation
 
 ```bash
-sudo -u www-data php occ app:enable files_external_s3
+cd /path/to/owncloud/apps
+git clone https://github.com/BWTECH-github/files_external_s3.git
+cd files_external_s3
+composer install --no-dev --optimize-autoloader
+# adjust to your web-server user (e.g. www-data)
+chown -R www-data:www-data .
+cd /path/to/owncloud
+sudo -u www-data ./occ app:enable files_external
+sudo -u www-data ./occ app:enable files_external_s3
 ```
 
-## Documentation
+The backend **Amazon S3 compatible (SDK v3)** then appears under
+*Settings → Admin → Storage* (and *Settings → Personal → Storage* when user
+mounts are allowed).
 
-- [ownCloud External Storage Documentation](https://doc.owncloud.com/server/latest/admin_manual/configuration/files/external_storage/)
+## Configuration
 
-## Part of ownCloud Classic (OC10)
+### Via the web UI
 
-This app extends the [ownCloud Server](https://github.com/owncloud/core) external storage framework with S3-compatible object storage integration. It is shipped as part of the [ownCloud Server Docker image](https://hub.docker.com/r/owncloud/server).
+*Settings → Storage → Add storage → “Amazon S3 compatible (SDK v3)”*, then fill:
 
-## Community & Support
+| Field | Required | Description |
+|---|---|---|
+| **Folder name** | yes | Mount point shown in Files |
+| **Bucket** | yes | Target S3 bucket (created automatically if missing) |
+| **Hostname** | no | Endpoint host, e.g. `s3.amazonaws.com`, `minio.example.com` (default `s3.amazonaws.com`) |
+| **Port** | no | Endpoint port (default 443 with SSL, 80 without) |
+| **Region** | no | e.g. `eu-west-1` (default `eu-west-1`) |
+| **Enable SSL** | no | Use `https` (recommended) |
+| **Enable Path Style** | no | Required by most S3-compatible services (MinIO/Ceph) |
+| **Access key** | yes | S3 access key ID |
+| **Secret key** | yes | S3 secret access key |
 
-**[Star](https://github.com/owncloud/files_external_s3)** this repo and **Watch** for release notifications!
+Set the *Available for* scope (all users, groups, or specific users) as with any
+external mount.
 
-- [ownCloud Website](https://owncloud.com)
-- [Community Discussions](https://github.com/orgs/owncloud/discussions)
-- [Matrix Chat](https://app.element.io/#/room/#owncloud:matrix.org)
-- [Documentation](https://doc.owncloud.com)
-- [Enterprise Support](https://owncloud.com/contact-us/)
-- [OSPO Home](https://kiteworks.com/opensource)
+### Via `occ`
 
-## Contributing
+```bash
+# create the mount
+occ files_external:create "/S3 Bucket" files_external_s3 amazons3::accesskey
 
-We welcome contributions! Please read the [Contributing Guidelines](CONTRIBUTING.md)
-and our [Code of Conduct](CODE_OF_CONDUCT.md) before getting started.
+# configure it (use the id printed by files_external:list)
+occ files_external:config <mount_id> bucket         my-bucket
+occ files_external:config <mount_id> hostname       minio.example.com
+occ files_external:config <mount_id> port           9000
+occ files_external:config <mount_id> region         eu-west-1
+occ files_external:config <mount_id> use_ssl        false
+occ files_external:config <mount_id> use_path_style true
+occ files_external:config <mount_id> key            <ACCESS_KEY>
+occ files_external:config <mount_id> secret         <SECRET_KEY>
 
-### Workflow
+# verify
+occ files_external:list
+occ files_external:verify <mount_id>
+```
 
-- **Rebase Early, Rebase Often!** We use a rebase workflow. Always rebase on the target branch before submitting a PR.
-- **Dependabot**: Automated dependency updates are managed via Dependabot. Review and merge dependency PRs promptly.
-- **Signed Commits**: All commits **must** be PGP/GPG signed. See [GitHub's signing guide](https://docs.github.com/en/authentication/managing-commit-signature-verification).
-- **DCO Sign-off**: Every commit must carry a `Signed-off-by` line:
-  ```
-  git commit -s -S -m "your commit message"
-  ```
-- **GitHub Actions Policy**: Workflows may only use actions that are (a) owned by `owncloud`, (b) created by GitHub (`actions/*`), or (c) verified in the GitHub Marketplace.
+## Daily usage
 
-## Security
+Once mounted, the bucket behaves like any other folder: users open it in Files,
+up-/download, share and sync it. Directories are emulated with zero-byte
+`…/` marker objects (standard S3 practice); deleting a folder removes all objects
+under its prefix.
 
-**Do not open a public GitHub issue for security vulnerabilities.**
+## Troubleshooting
 
-Report vulnerabilities at **<https://security.owncloud.com>** -- see [SECURITY.md](SECURITY.md).
+| Symptom | Likely cause / fix |
+|---|---|
+| Mount shows a red ✗ in Storage settings | Wrong key/secret/bucket or endpoint unreachable — run `occ files_external:verify <id>`; check server → endpoint connectivity. |
+| `Creation of bucket failed` | The access key lacks `CreateBucket`/`HeadBucket` rights, or the bucket exists in another account — pre-create the bucket and grant object rights only. |
+| Files/folders not listed | For MinIO/Ceph set **Enable Path Style** = true; verify **Hostname**/**Port** match the endpoint. |
+| TLS errors | Endpoint uses http → turn **Enable SSL** off (and set the correct port), or fix the endpoint certificate. |
+| Backend missing in Storage settings | `files_external` core app not enabled, or app not enabled: `occ app:enable files_external files_external_s3`. |
+| Slow directory operations on Ceph | `clearBucket` falls back to a per-object batch delete automatically; large prefixes take longer. |
 
-Bug bounty: [YesWeHack ownCloud Program](https://yeswehack.com/programs/owncloud-bug-bounty-program)
+## Attribution
 
-## License
-
-This project is licensed under the [GPL-2.0](LICENSE).
-
-## About the ownCloud OSPO
-
-The [Kiteworks Open Source Program Office](https://kiteworks.com/opensource), operating under
-the [ownCloud](https://owncloud.com) brand, launched on May 5, 2026, to steward the open source
-ecosystem around ownCloud's products. The OSPO ensures transparent governance, license compliance,
-community health, and sustainable collaboration between the open source community and
-[Kiteworks](https://www.kiteworks.com), which acquired ownCloud in 2023.
-
-- **OSPO Home**: <https://kiteworks.com/opensource>
-- **GitHub**: <https://github.com/owncloud>
-- **ownCloud**: <https://owncloud.com>
-
-For questions about the OSPO or licensing, contact ospo@kiteworks.com.
-
-### License Migration to Apache 2.0
-
-The OSPO is driving a strategic relicensing of ownCloud repositories toward the
-[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), following
-the [Apache Software Foundation's third-party license policy](https://www.apache.org/legal/resolved.html).
-
-Individual repositories will migrate as their audit is completed. The LICENSE file
-in each repo reflects its **current** license status (not the target).
-
-**Current license: GPL-2.0** (Category X per Apache policy -- cannot be included in Apache-2.0 works).
-
-Migration prerequisites for this repository:
-
-- **CLA/DCO coverage**: All past contributors must have signed agreements permitting relicensing
-- **Copyleft dependency audit**: All GPL dependencies must be replaced or isolated
-- **KDE heritage review**: Any code with KDE-era copyrights requires legal analysis
-- **Complete relicensing**: GPL-2.0 is a strong copyleft license; migration requires full relicensing of all files
+Originally developed by **ownCloud GmbH** and contributors
+(`owncloud/files_external_s3`, GPL-2.0). Modified for **owncloud.online** and
+**PHP 8.4** by **BW-Tech GmbH**. Licensed under GPL-2.0 (unchanged).
