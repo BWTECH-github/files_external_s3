@@ -1,12 +1,12 @@
 {
-    "name": "owncloud/files_external_s3",
-    "description": "files external adapter for S3",
+    "name": "bwtech/files_external_s3",
+    "description": "files external adapter for S3 (PHP 8.4 fork of owncloud/files_external_s3 for owncloud.online)",
     "license": "GPLv2",
     "config": {
         "optimize-autoloader": true,
         "classmap-authoritative": true,
         "platform": {
-            "php": "8.3"
+            "php": "8.4"
         },
         "allow-plugins": {
             "bamarni/composer-bin-plugin": true
@@ -18,7 +18,7 @@
         "psr/http-message": "^2.0"
     },
     "require": {
-        "php": ">=8.3",
+        "php": ">=8.4",
         "aws/aws-sdk-php": "^3.93"
     },
     "require-dev": {

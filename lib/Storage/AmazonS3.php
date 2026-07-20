@@ -17,6 +17,7 @@
  * @author Vincent Petry <pvince81@owncloud.com>
  *
  * @copyright Copyright (c) 2018, ownCloud GmbH.
+ * Modified by BW-Tech GmbH for owncloud.online (PHP 8.4).
  * @license GPL-2.0
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -51,45 +52,19 @@ use OCP\ITempManager;
 use Psr\Http\Message\RequestInterface;
 
 class AmazonS3 extends StorageAdapter {
-	/**
-	 * @var \Aws\S3\S3Client
-	 */
-	private $connection;
-	/**
-	 * @var string
-	 */
-	private $bucket;
-	/**
-	 * @var array
-	 */
-	private static $tmpFiles = [];
-	/**
-	 * @var array
-	 */
-	private $params;
-	/**
-	 * @var bool
-	 */
-	private $test = false;
-	/**
-	 * @var int
-	 */
-	private $timeout = 15;
-	/**
-	 * @var int in seconds
-	 */
-	private $rescanDelay = 10;
-
-	/** @var string */
-	private $id;
-
-	/** @var ILogger */
-	private $logger;
-
-	/**
-	 * @var ITempManager
-	 */
-	private $tempManager;
+	private ?S3Client $connection = null;
+	private string $bucket;
+	/** @var array<string, string> */
+	private static array $tmpFiles = [];
+	/** @var array<string, mixed> */
+	private array $params;
+	private bool $test = false;
+	private int $timeout = 15;
+	/** @var int in seconds */
+	private int $rescanDelay = 10;
+	private string $id;
+	private ILogger $logger;
+	private ITempManager $tempManager;
 
 	/**
 	 * @param string $path
@@ -160,6 +135,7 @@ class AmazonS3 extends StorageAdapter {
 	 * @return bool
 	 * @throws StorageNotAvailableException
 	 */
+	#[\Override]
 	protected function remove($path) {
 		// remember fileType to reduce http calls
 		$fileType = $this->filetype($path);
@@ -174,6 +150,7 @@ class AmazonS3 extends StorageAdapter {
 		return false;
 	}
 
+	#[\Override]
 	public function mkdir($path) {
 		$path = $this->normalizePath($path);
 
@@ -197,10 +174,12 @@ class AmazonS3 extends StorageAdapter {
 		return true;
 	}
 
+	#[\Override]
 	public function file_exists($path) {
 		return $this->filetype($path) !== false;
 	}
 
+	#[\Override]
 	public function rmdir($path) {
 		$path = $this->normalizePath($path);
 
@@ -246,9 +225,7 @@ class AmazonS3 extends StorageAdapter {
 				if (empty($keys)) {
 					continue;
 				}
-				$keys = \array_map(static function ($key) {
-					return ['Key' => $key];
-				}, $keys);
+				$keys = \array_map(static fn ($key) => ['Key' => $key], $keys);
 				// ... so we can delete the files in batches
 				$this->getConnection()->deleteObjects([
 					'Bucket' => $this->bucket,
@@ -266,6 +243,7 @@ class AmazonS3 extends StorageAdapter {
 		return true;
 	}
 
+	#[\Override]
 	public function opendir($path) {
 		$path = $this->normalizePath($path);
 
@@ -301,6 +279,7 @@ class AmazonS3 extends StorageAdapter {
 		}
 	}
 
+	#[\Override]
 	public function stat($path) {
 		$path = $this->normalizePath($path);
 
@@ -336,6 +315,7 @@ class AmazonS3 extends StorageAdapter {
 		}
 	}
 
+	#[\Override]
 	public function filetype($path) {
 		$path = $this->normalizePath($path);
 
@@ -361,6 +341,7 @@ class AmazonS3 extends StorageAdapter {
 	/**
 	 * @throws StorageNotAvailableException
 	 */
+	#[\Override]
 	public function unlink($path) {
 		$path = $this->normalizePath($path);
 
@@ -382,6 +363,7 @@ class AmazonS3 extends StorageAdapter {
 		return true;
 	}
 
+	#[\Override]
 	public function fopen($path, $mode) {
 		$path = $this->normalizePath($path);
 
@@ -433,6 +415,7 @@ class AmazonS3 extends StorageAdapter {
 		return false;
 	}
 
+	#[\Override]
 	public function touch($path, $mtime = null) {
 		$path = $this->normalizePath($path);
 
@@ -477,6 +460,7 @@ class AmazonS3 extends StorageAdapter {
 		return true;
 	}
 
+	#[\Override]
 	public function copy($path1, $path2) {
 		$path1 = $this->normalizePath($path1);
 		$path2 = $this->normalizePath($path2);
@@ -525,6 +509,7 @@ class AmazonS3 extends StorageAdapter {
 		return true;
 	}
 
+	#[\Override]
 	public function rename($path1, $path2) {
 		$path1 = $this->normalizePath($path1);
 		$path2 = $this->normalizePath($path2);
@@ -555,6 +540,7 @@ class AmazonS3 extends StorageAdapter {
 	/**
 	 * @throws \Exception
 	 */
+	#[\Override]
 	public function test() {
 		if ($this->getConnection()->getApi()->hasOperation('GetBucketAcl')) {
 			$test = $this->getConnection()->getBucketAcl([
@@ -573,12 +559,11 @@ class AmazonS3 extends StorageAdapter {
 			return false;
 		}
 		/** @phan-suppress-next-line PhanDeprecatedFunction */
-		$bucketExists = !empty(\array_filter($buckets->getPath('Buckets'), function ($k) {
-			return $k['Name'] === $this->bucket;
-		}));
+		$bucketExists = !empty(\array_filter($buckets->getPath('Buckets'), fn ($k) => $k['Name'] === $this->bucket));
 		return $bucketExists;
 	}
 
+	#[\Override]
 	public function getId() {
 		return $this->id;
 	}
@@ -685,6 +670,7 @@ class AmazonS3 extends StorageAdapter {
 		return true;
 	}
 
+	#[\Override]
 	public function usePartFile() {
 		return false;
 	}
