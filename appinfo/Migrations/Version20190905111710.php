@@ -3,6 +3,7 @@
  * @author Sujith Haridasan <sharidasan@owncloud.com>
  *
  * @copyright Copyright (c) 2019, ownCloud GmbH
+ * Modified by BW-Tech GmbH for owncloud.online (PHP 8.4).
  * @license AGPL-3.0
  *
  * This code is free software: you can redistribute it and/or modify
@@ -35,6 +36,7 @@ class Version20190905111710 implements ISqlMigration {
 	 * @param IDBConnection $connection
 	 * @return array|string
 	 */
+	#[\Override]
 	public function sql(IDBConnection $connection) {
 		$qb = $connection->getQueryBuilder();
 		$qb->update('external_mounts')

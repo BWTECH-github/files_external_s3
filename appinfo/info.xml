@@ -8,10 +8,12 @@ With ownCloud you can leverage storage that already exists in your enterprise. A
 This extension enables ownCloud Server to communicate with the widely spread S3 protocol (S3 HTTP API) to integrate object storages as external storages. Once an object storage is integrated by an administrator or the user in self-service, users see a folder structure that mirrors the hierarchy of the external storage. Users can then selectively sync files to their desktop or access them on mobile devices like any other file in ownCloud. The files will remain on the external storage but are now accessible in a secure and fully logged and traceable way through ownCloud.
 
 Administrators and users (when enabled) can find external storage configuration options in the 'Storage' section of admin and user settings, respectively.
+
+Originally developed by ownCloud GmbH; modified for owncloud.online and PHP 8.4 by BW-Tech GmbH.
     </description>
     <summary>Integrate S3 object storages as external storages</summary>
     <licence>GPLv2</licence>
-    <author>Robin McCorkell, Vincent Petry, Thomas Müller and many more</author>
+    <author>ownCloud GmbH, modified by BW-Tech GmbH</author>
     <version>2.2.0</version>
     <category>storage</category>
     <documentation>
@@ -19,7 +21,6 @@ Administrators and users (when enabled) can find external storage configuration 
 	<admin>https://doc.owncloud.com/server/latest/admin_manual/configuration/files/external_storage/amazons3.html</admin>
     </documentation>
     <namespace>FilesExternalS3</namespace>
-    <screenshot>https://raw.githubusercontent.com/owncloud/screenshots/master/objectstorage/ownCloud-app-s3-primary-objectstorage.jpg</screenshot>
     <types>
         <filesystem/>
     </types>
@@ -27,9 +28,9 @@ Administrators and users (when enabled) can find external storage configuration 
     <use-migrations>true</use-migrations>
     <dependencies>
         <owncloud min-version="11" max-version="11"/>
-        <php min-version="8.3"/>
+        <php min-version="8.4"/>
     </dependencies>
-    <website>https://github.com/owncloud/files_external_s3/</website>
-    <bugs>https://github.com/owncloud/files_external_s3/issues</bugs>
-    <repository type="git">https://github.com/owncloud/files_external_s3.git</repository>
+    <website>https://bw.tech</website>
+    <bugs>https://github.com/BWTECH-github/owncloud.online/issues</bugs>
+    <repository type="git">https://github.com/BWTECH-github/owncloud.online.git</repository>
 </info>

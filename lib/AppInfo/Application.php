@@ -3,6 +3,7 @@
  * @author Thomas Müller <thomas.mueller@tmit.eu>
  *
  * @copyright Copyright (c) 2018, ownCloud GmbH.
+ * Modified by BW-Tech GmbH for owncloud.online (PHP 8.4).
  * @license GPL-2.0
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -49,6 +50,7 @@ class Application extends App implements IBackendProvider, IAuthMechanismProvide
 	/**
 	 * @{inheritdoc}
 	 */
+	#[\Override]
 	public function getBackends() {
 		$container = $this->getContainer();
 
@@ -61,6 +63,7 @@ class Application extends App implements IBackendProvider, IAuthMechanismProvide
 	/**
 	 * @{inheritdoc}
 	 */
+	#[\Override]
 	public function getAuthMechanisms() {
 		$container = $this->getContainer();
 		return [
