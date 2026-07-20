@@ -29,7 +29,7 @@ jobs:
           tools: composer:v2
 
       - name: Cache composer
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/composer
           key: composer-dist-${{ hashFiles('composer.lock') }}
