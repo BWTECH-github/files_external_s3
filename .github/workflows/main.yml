@@ -51,7 +51,7 @@ jobs:
         run: composer bin owncloud-codestyle install --no-interaction --no-progress
 
       - name: php-cs-fixer (dry run)
-        run: vendor-bin/owncloud-codestyle/vendor/bin/php-cs-fixer fix --dry-run --diff
+        run: vendor-bin/owncloud-codestyle/vendor/bin/php-cs-fixer fix --dry-run --diff --allow-risky=yes
 
   integration:
     name: Enable against owncloud.online core
