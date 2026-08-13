@@ -6,8 +6,8 @@
 S3-compatible object storage as an **external storage** backend for
 owncloud.online. Administrators (and users, if permitted) mount an Amazon S3 or
 S3-compatible bucket (MinIO, Ceph RGW, Scality, Wasabi, BackBlaze B2, …) as a
-folder in the ownCloud files interface. Files stay on the object store and are
-served through ownCloud with the usual sharing, sync and access controls.
+folder in the owncloud.online files interface. Files stay on the object store and are
+served through owncloud.online with the usual sharing, sync and access controls.
 
 Unlike **primary** object storage (`files_primary_s3`, configured server-wide in
 `config.php`), this app plugs into the **files_external** framework and is
@@ -27,7 +27,7 @@ configured **per mount through the UI or `occ`** — no `config.php` change need
 
 ## Requirements
 
-- owncloud.online / ownCloud **11.x**
+- owncloud.online / owncloud.online **11.x**
 - **PHP 8.4**
 - The core **`files_external`** app enabled (`occ app:enable files_external`)
 - Network access from the server to the S3 endpoint
