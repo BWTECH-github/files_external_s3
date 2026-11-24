@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/).
 
+## [3.0.0] - 2026-11-24
+
+Eigene Versionslinie des Redesign-Zweigs; Inhalt wie 2.2.1.
+
+### Geändert
+
+- Setzt owncloud.online 11.1 voraus.
+
 ## [2.2.1] - 2026-08-13
 
 ### Changed
