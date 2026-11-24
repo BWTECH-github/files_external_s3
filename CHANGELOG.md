@@ -11,6 +11,7 @@ Eigene Versionslinie des Redesign-Zweigs; Inhalt wie 2.2.1.
 ### Geändert
 
 - Setzt owncloud.online 11.1 voraus.
+- Speicherart, Felder und Anmeldeart sind deutsch beschriftet (bisher nur englisch).
 
 ## [2.2.1] - 2026-08-13
 
