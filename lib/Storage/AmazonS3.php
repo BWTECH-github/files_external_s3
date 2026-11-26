@@ -265,27 +265,32 @@ class AmazonS3 extends StorageAdapter {
 			$params['Prefix'] = $path . '/';
 		}
 		try {
-			// Since there are no real directories on S3, we need
-			// to delete all objects prefixed with the path.
-			do {
-				// instead of the iterator, manually loop over the list ...
-				$objects = $this->getConnection()->listObjects($params);
-				/** @phan-suppress-next-line PhanDeprecatedFunction */
-				$keys = $objects->getPath('Contents/*/Key');
-				if (empty($keys)) {
+			// S3 kennt keine echten Ordner: alle Objekte mit dem Präfix löschen. Der Paginator
+			// liest Seite für Seite (höchstens 1000 Schlüssel) ab dem letzten Schlüssel weiter,
+			// ein Löschauftrag nimmt ebenfalls höchstens 1000 Schlüssel.
+			foreach ($this->getConnection()->getPaginator('ListObjects', $params) as $page) {
+				$keys = \array_map(static fn ($object) => ['Key' => $object['Key']], $page['Contents'] ?? []);
+				if ($keys === []) {
 					continue;
 				}
-				$keys = \array_map(static fn ($key) => ['Key' => $key], $keys);
-				// ... so we can delete the files in batches
-				$this->getConnection()->deleteObjects([
+				$result = $this->getConnection()->deleteObjects([
 					'Bucket' => $this->bucket,
 					'Delete' => [
-						'Objects' => $keys
+						'Objects' => $keys,
+						'Quiet' => true
 					]
 				]);
 				$this->testTimeout();
-				// we reached the end when the list is no longer truncated
-			} while ($objects['IsTruncated']);
+				// Einzelne Fehler meldet S3 in einer erfolgreichen Antwort
+				if (!empty($result['Errors'])) {
+					$this->logger->error(
+						'Could not delete ' . \count($result['Errors']) . ' objects in bucket ' . $this->bucket
+						. ', first ' . $result['Errors'][0]['Key'] . ': ' . $result['Errors'][0]['Code'],
+						['app' => 'files_external']
+					);
+					return false;
+				}
+			}
 		} catch (S3Exception $e) {
 			$this->logger->logException($e, ['app'=>'files_external']);
 			return false;
@@ -622,7 +627,7 @@ class AmazonS3 extends StorageAdapter {
 	 * Returns the connection
 	 *
 	 * @return S3Client connected client
-	 * @throws \Exception if connection could not be made
+	 * @throws StorageNotAvailableException if the bucket is not reachable
 	 */
 	public function getConnection(): S3Client {
 		if ($this->connection !== null) {
@@ -665,26 +670,30 @@ class AmazonS3 extends StorageAdapter {
 		$h = new GuzzleHandler($client);
 		$config['http_handler'] = $h;
 
-		$this->connection = new S3Client($config);
+		$connection = new S3Client($config);
 
-		if (!$this->connection->doesBucketExist($this->bucket)) {
-			try {
-				$this->connection->createBucket([
+		try {
+			if (!$connection->doesBucketExist($this->bucket)) {
+				$connection->createBucket([
 					'Bucket' => $this->bucket
 				]);
 				/* @phan-suppress-next-line PhanUndeclaredFunctionInCallable */
-				$this->connection->waitUntil('BucketExists', [
+				$connection->waitUntil('BucketExists', [
 					'Bucket' => $this->bucket,
 					'waiter.interval' => 1,
 					'waiter.max_attempts' => 15
 				]);
 				$this->testTimeout();
-			} catch (S3Exception $e) {
-				$this->logger->logException($e, ['app'=>'files_external']);
-				throw new \Exception('Creation of bucket failed. '.$e->getMessage());
 			}
+		} catch (S3Exception $e) {
+			// Falsche Schlüssel oder Gegenstelle nicht erreichbar: Der Kern zeigt den Speicher
+			// als nicht verfügbar an, statt die Anfrage mit einem Serverfehler abzubrechen.
+			// Die Verbindung bleibt ungesetzt, damit der nächste Aufruf wieder prüft.
+			$this->logger->logException($e, ['app'=>'files_external']);
+			throw new StorageNotAvailableException('Bucket ' . $this->bucket . ' not available. ' . $e->getMessage(), StorageNotAvailableException::STATUS_ERROR, $e);
 		}
 
+		$this->connection = $connection;
 		return $this->connection;
 	}
 
