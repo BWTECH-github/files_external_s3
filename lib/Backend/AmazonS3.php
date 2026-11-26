@@ -26,9 +26,12 @@
 namespace OCA\FilesExternalS3\Backend;
 
 use OCA\FilesExternalS3\Auth\AccessKey;
+use OCA\FilesExternalS3\Storage\AmazonS3 as S3Storage;
 use OCP\Files\External\Backend\Backend;
 use OCP\Files\External\DefinitionParameter;
+use OCP\Files\External\IStorageConfig;
 use OCP\IL10N;
+use OCP\IUser;
 
 class AmazonS3 extends Backend {
 	public function __construct(IL10N $l) {
@@ -51,5 +54,38 @@ class AmazonS3 extends Backend {
 			])
 			->addAuthScheme(AccessKey::SCHEME_AMAZONS3_ACCESSKEY);
 		;
+	}
+
+	/**
+	 * Nennt dem Speicher den Besitzer einer eigenen Einhängung: Sie bekommt eine
+	 * eigene Speicher-ID und damit einen eigenen Dateicache
+	 * (Storage\AmazonS3::storageId()). Immer gesetzt, auch leer - eine in der
+	 * Einhängung gespeicherte Angabe dieses Namens gilt nie.
+	 */
+	#[\Override]
+	public function manipulateStorageConfig(IStorageConfig &$storage, ?IUser $user = null) {
+		$storage->setBackendOption(S3Storage::OWNER_OPTION, self::ownerOf($storage, $user));
+	}
+
+	/**
+	 * Besitzer einer eigenen Einhängung, leer bei Einhängungen der Verwaltung.
+	 *
+	 * Eine noch nicht gespeicherte Einhängung kennt ihre Art nicht (Prüfung
+	 * beim Anlegen): Die Einstellungen der Benutzer nennen dann den Benutzer,
+	 * die der Verwaltung nicht. Ohne Benutzer (occ, Löschen) gehört die eigene
+	 * Einhängung dem einen Benutzer, für den sie gilt.
+	 */
+	public static function ownerOf(IStorageConfig $storage, ?IUser $user): string {
+		$type = $storage->getType();
+		$personal = $type === null ? $user !== null : (int)$type === IStorageConfig::MOUNT_TYPE_PERSONAl;
+		if (!$personal) {
+			return '';
+		}
+		if ($user !== null) {
+			return $user->getUID();
+		}
+		$owners = \array_values((array)$storage->getApplicableUsers());
+
+		return \count($owners) === 1 ? (string)$owners[0] : '';
 	}
 }

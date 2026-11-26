@@ -74,13 +74,18 @@ class StorageIdTest extends TestCase {
 		$db = \OC::$server->getDatabaseConnection();
 		$query = $db->getQueryBuilder();
 		$query->select('id')->from('storages')
-			->where($query->expr()->like('id', $query->createNamedParameter('amazon::' . $db->escapeLikeParameter(self::BUCKET) . '%')));
+			->where($query->expr()->like('id', $query->createNamedParameter('amazon%' . $db->escapeLikeParameter(self::BUCKET) . '%')));
 		$result = $query->execute();
 		$ids = $result->fetchFirstColumn();
 		$result->free();
 		// lange Kennungen legt der Kern als md5 ab, die findet das Muster nicht
 		foreach (\array_merge($ids, $this->longStorageIds) as $id) {
 			Storage::remove($id);
+		}
+		foreach (['anna', 'ben'] as $userId) {
+			foreach ([self::HOST_A, self::HOST_B] as $host) {
+				Storage::remove($this->ownId($userId, $host));
+			}
 		}
 	}
 
@@ -122,17 +127,37 @@ class StorageIdTest extends TestCase {
 		return $numericId === false ? null : (int)$numericId;
 	}
 
-	private function rename(): void {
+	private function step(): StorageIdRename {
 		$logger = $this->createMock(ILogger::class);
 		$logger->method('warning')->willReturnCallback(function ($message) {
 			$this->warnings[] = $message;
 		});
-		$step = new StorageIdRename(
+		return new StorageIdRename(
 			\OC::$server->getDatabaseConnection(),
 			\OC::$server->getUserManager(),
 			$logger
 		);
-		$step->run($this->createMock(IOutput::class));
+	}
+
+	/** Migration von 3.0.1: ID aus Bucket und Endpunkt */
+	private function rename(): void {
+		$this->step()->run($this->createMock(IOutput::class));
+	}
+
+	/** Migration von 3.0.2: eigene Einhängungen bekommen ihre eigene ID */
+	private function separate(): void {
+		$this->step()->separateOwnMounts($this->createMock(IOutput::class));
+	}
+
+	/** Eigene Einhängung eines Benutzers */
+	private function addOwnMount(string $userId, array $params): int {
+		$mountId = $this->addMount($params, DBConfigService::MOUNT_TYPE_PERSONAl);
+		$this->mounts->addApplicable($mountId, DBConfigService::APPLICABLE_TYPE_USER, $userId);
+		return $mountId;
+	}
+
+	private function ownId(string $userId, string $host = self::HOST_A): string {
+		return AmazonS3::storageId([AmazonS3::OWNER_OPTION => $userId] + $this->params($host));
 	}
 
 	private function legacyId(string $bucket = self::BUCKET): string {
@@ -314,5 +339,132 @@ class StorageIdTest extends TestCase {
 
 		$this->assertSame($numericId, $this->numericId($newId));
 		$this->assertNull($this->numericId($this->legacyId($bucket)));
+	}
+
+	public function testStorageIdOfAnOwnMountCarriesItsOwner(): void {
+		$shared = AmazonS3::storageId($this->params(self::HOST_A));
+
+		$this->assertSame('amazon_user::anna::' . self::BUCKET . '@' . self::HOST_A . ':443', $this->ownId('anna'));
+		$this->assertNotSame($shared, $this->ownId('anna'));
+		$this->assertNotSame($this->ownId('anna'), $this->ownId('ben'));
+		// Kennung und Bucket-Name, die zusammen wie die eines anderen aussehen
+		$this->assertNotSame(
+			AmazonS3::storageId([AmazonS3::OWNER_OPTION => 'a::b', 'bucket' => 'x', 'hostname' => self::HOST_A]),
+			AmazonS3::storageId([AmazonS3::OWNER_OPTION => 'a', 'bucket' => 'b::x', 'hostname' => self::HOST_A])
+		);
+	}
+
+	public static function ownerProvider(): array {
+		$admin = \OCP\Files\External\IStorageConfig::MOUNT_TYPE_ADMIN;
+		$personal = \OCP\Files\External\IStorageConfig::MOUNT_TYPE_PERSONAl;
+		return [
+			'eigene Einhängung' => [$personal, 'anna', ['anna'], 'anna'],
+			'eigene Einhängung ohne Benutzer (occ, Löschen)' => [$personal, null, ['anna'], 'anna'],
+			'Einhängung der Verwaltung' => [$admin, 'anna', ['anna'], ''],
+			'Einhängung der Verwaltung, Art als Text' => ['1', 'anna', [], ''],
+			'Prüfung beim Anlegen in den Einstellungen des Benutzers' => [null, 'anna', [], 'anna'],
+			'Prüfung beim Anlegen in der Verwaltung' => [null, null, ['anna'], ''],
+		];
+	}
+
+	/**
+	 * @dataProvider ownerProvider
+	 */
+	public function testBackendNamesTheOwnerOfAnOwnMountOnly($type, ?string $userId, array $applicable, string $expected): void {
+		$backends = \OC::$server->getStoragesBackendService();
+		$config = new \OC\Files\External\StorageConfig(1);
+		$config->setBackend($backends->getBackend('files_external_s3'));
+		// In der Einhängung gespeicherte Angabe: darf nie gelten
+		$config->setBackendOptions($this->params(self::HOST_A) + [AmazonS3::OWNER_OPTION => 'opfer']);
+		if ($type !== null) {
+			$config->setType($type);
+		}
+		$config->setApplicableUsers($applicable);
+		$user = null;
+		if ($userId !== null) {
+			$user = $this->createMock(\OCP\IUser::class);
+			$user->method('getUID')->willReturn($userId);
+		}
+
+		$config->getBackend()->manipulateStorageConfig($config, $user);
+
+		$this->assertSame($expected, $config->getBackendOption(AmazonS3::OWNER_OPTION));
+	}
+
+	public function testOwnMountTakesItsFileCacheAlong(): void {
+		$this->addOwnMount('anna', $this->params(self::HOST_A));
+		$numericId = $this->addStorage(AmazonS3::storageId($this->params(self::HOST_A)));
+
+		$this->separate();
+
+		$this->assertSame($numericId, $this->numericId($this->ownId('anna')));
+		$this->assertNull($this->numericId(AmazonS3::storageId($this->params(self::HOST_A))));
+		$this->assertSame([], $this->warnings);
+	}
+
+	public function testAdminMountKeepsTheFileCacheItSharedWithAnOwnMount(): void {
+		$own = $this->addOwnMount('anna', $this->params(self::HOST_A));
+		$admin = $this->addMount($this->params(self::HOST_A));
+		$numericId = $this->addStorage(AmazonS3::storageId($this->params(self::HOST_A)));
+
+		$this->separate();
+
+		$this->assertSame($numericId, $this->numericId(AmazonS3::storageId($this->params(self::HOST_A))));
+		$this->assertNull($this->numericId($this->ownId('anna')), 'die eigene Einhängung beginnt leer');
+		$this->assertCount(1, $this->warnings);
+		$this->assertStringContainsString((string)$own, $this->warnings[0]);
+		$this->assertStringContainsString((string)$admin, $this->warnings[0]);
+	}
+
+	public function testOldestOwnMountKeepsTheFileCacheSharedByOwnMounts(): void {
+		$oldest = $this->addOwnMount('anna', $this->params(self::HOST_A));
+		$younger = $this->addOwnMount('ben', $this->params(self::HOST_A));
+		$numericId = $this->addStorage(AmazonS3::storageId($this->params(self::HOST_A)));
+
+		$this->separate();
+
+		$this->assertSame($numericId, $this->numericId($this->ownId('anna')));
+		$this->assertNull($this->numericId($this->ownId('ben')), 'die jüngere Einhängung beginnt leer');
+		$this->assertNull($this->numericId(AmazonS3::storageId($this->params(self::HOST_A))));
+		$this->assertCount(1, $this->warnings);
+		$this->assertStringContainsString((string)$oldest, $this->warnings[0]);
+		$this->assertStringContainsString((string)$younger, $this->warnings[0]);
+	}
+
+	public function testSeparatingASecondTimeChangesNothing(): void {
+		$this->addOwnMount('anna', $this->params(self::HOST_A));
+		$this->addOwnMount('ben', $this->params(self::HOST_A));
+		$numericId = $this->addStorage(AmazonS3::storageId($this->params(self::HOST_A)));
+		$this->separate();
+		$this->warnings = [];
+		$ben = $this->addStorage($this->ownId('ben'));
+
+		$this->separate();
+
+		$this->assertSame($numericId, $this->numericId($this->ownId('anna')));
+		$this->assertSame($ben, $this->numericId($this->ownId('ben')));
+		$this->assertSame([], $this->warnings);
+	}
+
+	public function testOwnMountComesStraightFromTheBucketNameId(): void {
+		// Upgrade von 3.0.0: beide Migrationen laufen nacheinander
+		$this->addOwnMount('anna', $this->params(self::HOST_A));
+		$numericId = $this->addStorage($this->legacyId());
+
+		$this->rename();
+		$this->separate();
+
+		$this->assertSame($numericId, $this->numericId($this->ownId('anna')));
+		$this->assertSame([], $this->warnings);
+	}
+
+	public function testAdminMountsAreLeftAloneWhenOwnMountsAreSeparated(): void {
+		$this->addMount($this->params(self::HOST_A));
+		$numericId = $this->addStorage(AmazonS3::storageId($this->params(self::HOST_A)));
+
+		$this->separate();
+
+		$this->assertSame($numericId, $this->numericId(AmazonS3::storageId($this->params(self::HOST_A))));
+		$this->assertSame([], $this->warnings);
 	}
 }

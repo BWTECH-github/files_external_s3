@@ -100,6 +100,9 @@ class AmazonS3 extends StorageAdapter {
 		return $path;
 	}
 
+	/** Angabe der Einhängung: Besitzer einer eigenen Einhängung, gesetzt von der Speicherart */
+	public const OWNER_OPTION = '__s3_owner';
+
 	/**
 	 * Speicher-ID aus Bucket und Endpunkt (Host und Port). Der Bucket-Name
 	 * allein ist nur an einem Endpunkt eindeutig: Zwei Einhängungen
@@ -114,6 +117,12 @@ class AmazonS3 extends StorageAdapter {
 	 * Jeder Teil ist maskiert, damit kein Bucket-Name wie „Bucket@Host:Port“
 	 * einer anderen Einhängung aussehen kann.
 	 *
+	 * Die eigene Einhängung eines Benutzers trägt dazu seine Kennung: Der Kern
+	 * liefert Namen, Größen und Zeiten aus dem Dateicache, ohne den Speicher zu
+	 * fragen. Mit einer gemeinsamen ID öffnete sie den Dateicache jeder
+	 * Einhängung desselben Buckets - auch mit Schlüsseln, die nicht stimmen.
+	 * Einhängungen der Verwaltung teilen sich ihren Dateicache weiter.
+	 *
 	 * @param array $params Angaben der Einhängung; use_ssl als Wahrheitswert
 	 */
 	public static function storageId(array $params): string {
@@ -123,9 +132,14 @@ class AmazonS3 extends StorageAdapter {
 			$port = (($params['use_ssl'] ?? null) === false) ? '80' : '443';
 		}
 
-		return 'amazon::' . \rawurlencode((string)$params['bucket'])
+		$endpoint = \rawurlencode((string)$params['bucket'])
 			. '@' . \rawurlencode($hostname)
 			. ':' . \rawurlencode(\trim($port));
+		$owner = (string)($params[self::OWNER_OPTION] ?? '');
+
+		return $owner === ''
+			? 'amazon::' . $endpoint
+			: 'amazon_user::' . \rawurlencode($owner) . '::' . $endpoint;
 	}
 
 	/**
