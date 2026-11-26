@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/).
 
+## [3.0.1] - 2026-11-26
+
+### Sicherheit
+
+- Sicherheit verbessert.
+
 ## [3.0.0] - 2026-11-24
 
 Eigene Versionslinie des Redesign-Zweigs; Inhalt wie 2.2.1.

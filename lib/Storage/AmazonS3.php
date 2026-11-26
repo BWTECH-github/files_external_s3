@@ -101,6 +101,42 @@ class AmazonS3 extends StorageAdapter {
 	}
 
 	/**
+	 * Speicher-ID aus Bucket und Endpunkt (Host und Port). Der Bucket-Name
+	 * allein ist nur an einem Endpunkt eindeutig: Zwei Einhängungen
+	 * gleichnamiger Buckets bei verschiedenen Anbietern teilten sich sonst
+	 * Dateicache, Datei-IDs und damit Freigaben und Tags.
+	 *
+	 * Die Region gehört nicht dazu. Verbunden wird immer mit dem eingetragenen
+	 * Endpunkt, die Region dient nur der Signatur. Zugangsschlüssel auch
+	 * nicht - ein getauschter Schlüssel darf den Dateicache nicht verwerfen.
+	 *
+	 * Host und Port gelten mit denselben Vorgaben wie beim Verbindungsaufbau.
+	 * Jeder Teil ist maskiert, damit kein Bucket-Name wie „Bucket@Host:Port“
+	 * einer anderen Einhängung aussehen kann.
+	 *
+	 * @param array $params Angaben der Einhängung; use_ssl als Wahrheitswert
+	 */
+	public static function storageId(array $params): string {
+		$hostname = empty($params['hostname']) ? 's3.amazonaws.com' : \strtolower(\trim((string)$params['hostname']));
+		$port = (string)($params['port'] ?? '');
+		if ($port === '') {
+			$port = (($params['use_ssl'] ?? null) === false) ? '80' : '443';
+		}
+
+		return 'amazon::' . \rawurlencode((string)$params['bucket'])
+			. '@' . \rawurlencode($hostname)
+			. ':' . \rawurlencode(\trim($port));
+	}
+
+	/**
+	 * Speicher-ID bis 3.0.0: nur der Bucket-Name. Nur noch für die Übernahme
+	 * beim Upgrade (Migration\StorageIdRename).
+	 */
+	public static function legacyStorageId(array $params): string {
+		return 'amazon::' . $params['bucket'];
+	}
+
+	/**
 	 * AmazonS3 constructor.
 	 *
 	 * @param array $params
@@ -112,7 +148,7 @@ class AmazonS3 extends StorageAdapter {
 			throw new \Exception('Access Key, Secret and Bucket have to be configured.');
 		}
 
-		$this->id = 'amazon::' . $params['bucket'];
+		$this->id = self::storageId($params);
 
 		$this->bucket = $params['bucket'];
 		$this->test = isset($params['test']);
